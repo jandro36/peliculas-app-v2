@@ -1,0 +1,26 @@
+[
+    {
+        "titulo": "Spider-Man",
+        "director": "Sam Raimi",
+        "anio": 2002,
+        "link": "https://ejemplo.com/enlace-pelicula",
+        "tipo": "pelicula",
+        "visto": "Sí",
+        "temporada": 1,
+        "episodio": 0,
+        "poster": "https://image.tmdb.org/t/p/w500/bCDaKZLRkrVVtPNyHxUfKvepW1N.jpg",
+        "sinopsis": "Peter Parker es un joven estudiante que adquiere habilidades sobrehumanas tras ser picado por una araña modificada genéticamente."
+    },
+    {
+        "titulo": "Fallout",
+        "director": "Graham Wagner, Geneva Robertson-Dworet",
+        "anio": 2024,
+        "link": "",
+        "tipo": "serie",
+        "visto": "No",
+        "temporada": 2,
+        "episodio": 8,
+        "poster": "https://image.tmdb.org/t/p/w500/uNctKf62RRL8RKPTrdyFrcttwT2.jpg",
+        "sinopsis": "En un futuro postapocalíptico de Los Ángeles, los ciudadanos deben vivir en búnkeres subterráneos para protegerse de la radiación y los mutantes."
+    }
+]

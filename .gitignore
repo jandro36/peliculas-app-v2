@@ -1,0 +1,29 @@
+# Datos sensibles de usuarios y colecciones
+usuarios.json
+peliculas*.txt
+peliculas*.json
+!peliculas.example.json
+!usuarios.example.json
+
+# Sesiones de PHP
+sessions/
+privado/sessions/
+
+# Certificados SSL y claves privadas
+certs/
+*.crt
+*.key
+*.pem
+
+# Archivos de entorno y configuración sensible
+.env
+.env.local
+
+# Backups y temporales
+*.bak
+*.tmp*
+*backup*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
