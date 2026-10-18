@@ -115,6 +115,8 @@ if ($action === 'details') {
         $year = !empty($data['first_air_date']) ? substr($data['first_air_date'], 0, 4) : '';
         $poster = !empty($data['poster_path']) ? 'https://image.tmdb.org/t/p/w500' . $data['poster_path'] : null;
 
+        $genres = array_column($data['genres'] ?? [], 'name');
+
         echo json_encode([
             'id' => $id,
             'tipo' => 'serie',
@@ -125,7 +127,8 @@ if ($action === 'details') {
             'temporadas' => $data['number_of_seasons'] ?? 1,
             'episodios' => $data['number_of_episodes'] ?? 0,
             'poster' => $poster,
-            'sinopsis' => $data['overview'] ?? ''
+            'sinopsis' => $data['overview'] ?? '',
+            'generos' => $genres
         ], JSON_UNESCAPED_UNICODE);
         exit;
     } else {
@@ -161,6 +164,8 @@ if ($action === 'details') {
         $year = !empty($yearRaw) ? substr($yearRaw, 0, 4) : '';
         $poster = !empty($data['poster_path']) ? 'https://image.tmdb.org/t/p/w500' . $data['poster_path'] : null;
 
+        $genres = array_column($data['genres'] ?? [], 'name');
+
         echo json_encode([
             'id' => $id,
             'tipo' => 'pelicula',
@@ -169,7 +174,8 @@ if ($action === 'details') {
             'director' => implode(', ', $directors),
             'anio' => $year ? intval($year) : '',
             'poster' => $poster,
-            'sinopsis' => $data['overview'] ?? ''
+            'sinopsis' => $data['overview'] ?? '',
+            'generos' => $genres
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }

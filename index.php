@@ -62,7 +62,7 @@ $pelicula_editar = [
     'titulo' => '', 'director' => '', 'anio' => '', 
     'visto' => 'No', 'link' => '', 'tipo' => 'pelicula',
     'temporada' => 1, 'episodio' => 0,
-    'poster' => '', 'sinopsis' => ''
+    'poster' => '', 'sinopsis' => '', 'generos' => []
 ];
 
 // --- PROCESAR ACCIONES (SOLO EDITORES) ---
@@ -72,6 +72,16 @@ if ($puede_editar) {
         $id = $_POST['id'] ?? '';
         $tipo = $_POST['tipo'] ?? 'pelicula';
         
+        $generos_raw = $_POST['generos'] ?? '';
+        if (is_array($generos_raw)) {
+            $generos = $generos_raw;
+        } elseif (!empty($generos_raw)) {
+            $decoded = json_decode($generos_raw, true);
+            $generos = is_array($decoded) ? $decoded : array_filter(array_map('trim', explode(',', $generos_raw)));
+        } else {
+            $generos = [];
+        }
+
         $nuevo = [
             'titulo' => htmlspecialchars(trim($_POST['titulo'])),
             'director' => htmlspecialchars(trim($_POST['director'])),
@@ -82,7 +92,8 @@ if ($puede_editar) {
             'temporada' => ($tipo === 'serie') ? intval($_POST['temporada'] ?? 1) : 1,
             'episodio' => ($tipo === 'serie') ? intval($_POST['episodio'] ?? 0) : 0,
             'poster' => htmlspecialchars(trim($_POST['poster'] ?? '')),
-            'sinopsis' => htmlspecialchars(trim($_POST['sinopsis'] ?? ''))
+            'sinopsis' => htmlspecialchars(trim($_POST['sinopsis'] ?? '')),
+            'generos' => array_values(array_unique(array_filter($generos)))
         ];
 
         // Mantenemos enlaces_temporada intacto si estamos editando
@@ -97,6 +108,9 @@ if ($puede_editar) {
             }
             if (empty($nuevo['sinopsis']) && !empty($peliculas[(int)$id]['sinopsis'])) {
                 $nuevo['sinopsis'] = $peliculas[(int)$id]['sinopsis'];
+            }
+            if (empty($nuevo['generos']) && !empty($peliculas[(int)$id]['generos'])) {
+                $nuevo['generos'] = $peliculas[(int)$id]['generos'];
             }
         }
 
@@ -119,6 +133,13 @@ if ($puede_editar) {
                 if (empty($nuevo['anio'])) {
                     $date = ($tipo === 'serie') ? ($match['first_air_date'] ?? '') : ($match['release_date'] ?? '');
                     if ($date) $nuevo['anio'] = intval(substr($date, 0, 4));
+                }
+                if (empty($nuevo['generos']) && !empty($match['id'])) {
+                    $detailUrl = "https://api.themoviedb.org/3/{$endpoint}/{$match['id']}?api_key={$apiKey}&language=es-ES";
+                    $detail = json_decode(@file_get_contents($detailUrl), true);
+                    if (!empty($detail['genres'])) {
+                        $nuevo['generos'] = array_column($detail['genres'], 'name');
+                    }
                 }
             }
         }
@@ -181,9 +202,29 @@ if ($puede_editar) {
             if (!isset($pelicula_editar['episodio'])) $pelicula_editar['episodio'] = 0;
             if (!isset($pelicula_editar['poster'])) $pelicula_editar['poster'] = '';
             if (!isset($pelicula_editar['sinopsis'])) $pelicula_editar['sinopsis'] = '';
+            if (!isset($pelicula_editar['generos']) || !is_array($pelicula_editar['generos'])) $pelicula_editar['generos'] = [];
         }
     }
 }
+
+// Extracción de géneros para filtros y recomendador
+$todos_los_generos = [];
+$generos_pendientes = [];
+foreach ($peliculas as $p) {
+    $isPendiente = (($p['visto'] ?? 'No') !== 'Sí');
+    if (!empty($p['generos']) && is_array($p['generos'])) {
+        foreach ($p['generos'] as $g) {
+            $todos_los_generos[$g] = true;
+            if ($isPendiente) {
+                $generos_pendientes[$g] = true;
+            }
+        }
+    }
+}
+ksort($todos_los_generos);
+ksort($generos_pendientes);
+$lista_generos = array_keys($todos_los_generos);
+$lista_generos_pendientes = array_keys($generos_pendientes);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -387,6 +428,29 @@ if ($puede_editar) {
         .btn-outline { background: transparent; color: var(--text-main); border: 1px solid var(--border-color); }
         .btn-outline:hover { background: #f1f5f9; }
 
+        /* BOTÓN RULETA / QUÉ VEO HOY */
+        .btn-roulette {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            font-weight: 800;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            padding: 10px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-roulette:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
+            filter: brightness(1.05);
+        }
+
         /* CONTROLES DE BÚSQUEDA Y FILTRO */
         .controls-wrapper { 
             background: var(--card-bg); 
@@ -412,7 +476,7 @@ if ($puede_editar) {
         }
         .search-bar:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
         
-        .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .filter-chip { 
             padding: 7px 15px; 
             border-radius: 20px; 
@@ -430,6 +494,23 @@ if ($puede_editar) {
         .filter-chip.active-serie { background: var(--serie-color); color: white; border-color: var(--serie-color); }
         .filter-chip.active-visto { background: var(--success); color: white; border-color: var(--success); }
         .filter-chip.active-pendiente { background: var(--warning); color: white; border-color: var(--warning); }
+        
+        .filter-select {
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid var(--border-color);
+            background: white;
+            color: var(--text-muted);
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .filter-select:hover, .filter-select:focus {
+            border-color: var(--primary);
+            color: var(--text-main);
+        }
 
         /* GRID DE TARJETAS */
         .movies-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
@@ -498,6 +579,20 @@ if ($puede_editar) {
         .badge-progreso { background-color: #334155; }
         
         .card-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; line-height: 1.4; }
+        
+        /* CHIPS DE GÉNERO */
+        .card-genres { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+        .genre-chip {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            letter-spacing: 0.2px;
+        }
+
         .card-sinopsis {
             font-size: 12px;
             color: var(--text-muted);
@@ -550,6 +645,226 @@ if ($puede_editar) {
         .btn-serie { background-color: var(--serie-color); }
         .btn-danger { background-color: var(--danger); }
         .no-results { grid-column: 1 / -1; text-align: center; padding: 50px 20px; color: var(--text-muted); font-size: 16px; background: white; border-radius: 14px; border: 1px dashed var(--border-color); }
+
+        /* MODAL RECOMENDADOR ¿QUÉ VEO HOY? */
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 20px;
+            animation: fadeIn 0.2s ease-out;
+        }
+        .modal-box {
+            background: white;
+            border-radius: 18px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleUp { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border-color);
+            background: #fafbfc;
+        }
+        .modal-head-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .btn-close-modal {
+            background: none;
+            border: none;
+            font-size: 26px;
+            color: var(--text-muted);
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .btn-close-modal:hover { color: var(--text-main); background: #e2e8f0; }
+
+        .rec-filters-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 16px 24px 10px 24px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .rec-filter-col label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .rec-filter-col select {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: white;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            outline: none;
+        }
+        .rec-filter-col select:focus {
+            border-color: var(--primary);
+        }
+
+        .rec-card-container {
+            padding: 24px;
+            min-height: 240px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .rec-spotlight {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .rec-spotlight.animating {
+            opacity: 0;
+            transform: scale(0.96) translateY(5px);
+        }
+        .rec-poster {
+            width: 125px;
+            min-width: 125px;
+            height: 185px;
+            border-radius: 10px;
+            object-fit: cover;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+            background: #e2e8f0;
+            flex-shrink: 0;
+        }
+        .rec-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .rec-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin: 0 0 6px 0;
+            line-height: 1.2;
+        }
+        .rec-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .rec-sinopsis {
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.45;
+            max-height: 70px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            padding-right: 4px;
+        }
+        .rec-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: auto;
+        }
+        .btn-rec-action {
+            padding: 8px 14px;
+            font-size: 13px;
+            border-radius: 8px;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .btn-rec-play {
+            background-color: var(--primary);
+            color: white;
+        }
+        .btn-rec-play:hover {
+            background-color: var(--primary-hover);
+        }
+        .btn-rec-seen {
+            background-color: #dcfce7;
+            color: var(--success);
+            border: 1px solid #bbf7d0;
+        }
+        .btn-rec-seen:hover {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .modal-foot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+            background: #fafbfc;
+        }
+        .btn-roulette-next {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            font-weight: 800;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+        .btn-roulette-next:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.06);
+            box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+        }
+        .spin-icon {
+            display: inline-block;
+            transition: transform 0.4s ease;
+        }
+        .spinning {
+            transform: rotate(360deg);
+        }
+
+        .rec-empty {
+            text-align: center;
+            padding: 30px 15px;
+            color: var(--text-muted);
+        }
+        .rec-empty-icon {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -581,6 +896,7 @@ if ($puede_editar) {
             <input type="hidden" name="id" value="<?php echo $editando ? $id_editar : ''; ?>">
             <input type="hidden" name="poster" id="inputPoster" value="<?php echo htmlspecialchars($pelicula_editar['poster'] ?? ''); ?>">
             <input type="hidden" name="sinopsis" id="inputSinopsis" value="<?php echo htmlspecialchars($pelicula_editar['sinopsis'] ?? ''); ?>">
+            <input type="hidden" name="generos" id="inputGeneros" value="<?php echo htmlspecialchars(json_encode($pelicula_editar['generos'] ?? [])); ?>">
 
             <!-- PREVIEW DE PÓSTER SELECCIONADO -->
             <div id="posterPreviewContainer" class="poster-preview-box" style="display: <?php echo !empty($pelicula_editar['poster']) ? 'flex' : 'none'; ?>;">
@@ -588,6 +904,11 @@ if ($puede_editar) {
                 <div style="flex: 1; min-width: 0;">
                     <div style="font-weight: 700; color: var(--primary); font-size: 13px; margin-bottom: 3px;">
                         Carátula y datos oficiales cargados
+                    </div>
+                    <div id="previewGeneros" class="card-genres" style="margin-bottom: 4px;">
+                        <?php foreach ($pelicula_editar['generos'] ?? [] as $g): ?>
+                            <span class="genre-chip"><?php echo htmlspecialchars($g); ?></span>
+                        <?php endforeach; ?>
                     </div>
                     <div id="sinopsisPreviewText" style="font-size: 12px; color: var(--text-muted); line-height: 1.35; max-height: 48px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
                         <?php echo htmlspecialchars($pelicula_editar['sinopsis'] ?? ''); ?>
@@ -665,13 +986,28 @@ if ($puede_editar) {
 
     <!-- CONTROLES Y FILTROS -->
     <div class="controls-wrapper">
-        <input type="text" id="buscador" class="search-bar" placeholder="🔍 Buscar por título o creador..." onkeyup="aplicarFiltros()">
+        <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <input type="text" id="buscador" class="search-bar" style="flex: 1; min-width: 250px;" placeholder="🔍 Buscar por título, creador o género..." onkeyup="aplicarFiltros()">
+            <button type="button" class="btn-roulette" onclick="abrirRecomendador()" title="Recomiéndame una película o serie de la colección">
+                🎲 ¿Qué veo hoy?
+            </button>
+        </div>
+        
         <div class="filters">
             <button class="filter-chip active-all" id="btn-all" onclick="setFiltroTipo('all')">Todo</button>
             <button class="filter-chip" id="btn-pelicula" onclick="setFiltroTipo('pelicula')">🎬 Películas</button>
             <button class="filter-chip" id="btn-serie" onclick="setFiltroTipo('serie')">📺 Series</button>
             <button class="filter-chip" id="btn-visto" onclick="setFiltroTipo('visto')">👀 Vistas</button>
             <button class="filter-chip" id="btn-pendiente" onclick="setFiltroTipo('pendiente')">⏳ Pendientes</button>
+            
+            <?php if (!empty($lista_generos)): ?>
+            <select id="filtroGeneroMain" class="filter-select" onchange="aplicarFiltros()">
+                <option value="all">🎭 Todos los géneros</option>
+                <?php foreach ($lista_generos as $gen): ?>
+                    <option value="<?php echo htmlspecialchars(strtolower($gen)); ?>"><?php echo htmlspecialchars($gen); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -685,12 +1021,14 @@ if ($puede_editar) {
                 $temp = $peli['temporada'] ?? 1;
                 $ep = $peli['episodio'] ?? 0;
                 $visto = ($tipo === 'pelicula') ? ($peli['visto'] === 'Sí' ? 'si' : 'no') : 'no';
+                $generos_str = !empty($peli['generos']) && is_array($peli['generos']) ? implode(' ', $peli['generos']) : '';
             ?>
                 <div class="card peli-card type-<?php echo $tipo; ?>" 
                      data-titulo="<?php echo htmlspecialchars(strtolower($peli['titulo'])); ?>" 
                      data-director="<?php echo htmlspecialchars(strtolower($peli['director'])); ?>" 
                      data-tipo="<?php echo $tipo; ?>"
-                     data-visto="<?php echo $visto; ?>">
+                     data-visto="<?php echo $visto; ?>"
+                     data-generos="<?php echo htmlspecialchars(strtolower($generos_str)); ?>">
                     
                     <div>
                         <div class="card-top-layout">
@@ -726,6 +1064,14 @@ if ($puede_editar) {
                                     👤 <?php echo htmlspecialchars($peli['director']) ?: 'Desconocido'; ?><br>
                                     📅 <?php echo htmlspecialchars($peli['anio']) ?: 'N/A'; ?>
                                 </div>
+
+                                <?php if (!empty($peli['generos']) && is_array($peli['generos'])): ?>
+                                    <div class="card-genres">
+                                        <?php foreach (array_slice($peli['generos'], 0, 3) as $g): ?>
+                                            <span class="genre-chip"><?php echo htmlspecialchars($g); ?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
 
                                 <?php if (!empty($peli['sinopsis'])): ?>
                                     <div class="card-sinopsis" title="<?php echo htmlspecialchars($peli['sinopsis']); ?>">
@@ -772,7 +1118,79 @@ if ($puede_editar) {
     </div>
 </div>
 
+<!-- MODAL RECOMENDADOR ¿QUÉ VEO HOY? -->
+<div id="modalRecomendador" class="modal-backdrop" style="display: none;" onclick="cerrarRecomendador(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-head">
+            <div class="modal-head-title">
+                <span style="font-size: 26px;">🎲</span>
+                <div>
+                    <h3 style="margin: 0; font-size: 19px; font-weight: 800; color: var(--text-main);">¿Qué vemos hoy?</h3>
+                    <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Sugerencia personalizada de tus títulos pendientes</p>
+                </div>
+            </div>
+            <button type="button" class="btn-close-modal" onclick="cerrarRecomendador()">&times;</button>
+        </div>
+
+        <!-- Filtros del recomendador -->
+        <div class="rec-filters-row">
+            <div class="rec-filter-col">
+                <label>Formato:</label>
+                <select id="recFiltroTipo" onchange="obtenerRecomendacion()">
+                    <option value="all">🍿 Cualquier formato</option>
+                    <option value="pelicula">🎬 Solo Películas</option>
+                    <option value="serie">📺 Solo Series</option>
+                </select>
+            </div>
+            <div class="rec-filter-col">
+                <label>Género / Estado de ánimo:</label>
+                <select id="recFiltroGenero" onchange="obtenerRecomendacion()">
+                    <option value="all">🎭 Cualquier género</option>
+                    <?php foreach ($lista_generos_pendientes as $gen): ?>
+                        <option value="<?php echo htmlspecialchars(strtolower($gen)); ?>"><?php echo htmlspecialchars($gen); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+        <!-- Contenedor dinámico de la recomendación -->
+        <div id="recCardContainer" class="rec-card-container">
+            <!-- Inyectado por JS -->
+        </div>
+
+        <div class="modal-foot">
+            <button type="button" class="btn btn-outline" onclick="cerrarRecomendador()">Cerrar</button>
+            <button type="button" class="btn-roulette-next" onclick="animarYRecomendar()">
+                <span id="spinIcon" class="spin-icon">🔄</span> Probar otra sugerencia
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
+    // Colección completa en cliente para el recomendador instantáneo
+    const coleccionData = <?php 
+        $exportData = [];
+        foreach ($peliculas as $idx => $p) {
+            $exportData[] = [
+                'id' => $idx,
+                'titulo' => $p['titulo'] ?? '',
+                'director' => $p['director'] ?? '',
+                'anio' => $p['anio'] ?? '',
+                'tipo' => $p['tipo'] ?? 'pelicula',
+                'visto' => $p['visto'] ?? 'No',
+                'poster' => $p['poster'] ?? '',
+                'sinopsis' => $p['sinopsis'] ?? '',
+                'link' => $p['link'] ?? '',
+                'generos' => $p['generos'] ?? [],
+                'temporada' => $p['temporada'] ?? 1,
+                'episodio' => $p['episodio'] ?? 0,
+                'enlaces_temporada' => $p['enlaces_temporada'] ?? null
+            ];
+        }
+        echo json_encode($exportData, JSON_UNESCAPED_UNICODE);
+    ?>;
+
     function toggleCamposTipo() {
         let selector = document.getElementById('selectorTipo');
         let divPelicula = document.getElementById('camposPelicula');
@@ -804,6 +1222,7 @@ if ($puede_editar) {
 
     function aplicarFiltros() {
         let inputBuscador = document.getElementById("buscador").value.toLowerCase();
+        let filtroGen = document.getElementById("filtroGeneroMain") ? document.getElementById("filtroGeneroMain").value.toLowerCase() : "all";
         let cards = document.getElementsByClassName("peli-card");
         let visibles = 0;
 
@@ -812,8 +1231,9 @@ if ($puede_editar) {
             let director = cards[i].getAttribute("data-director") || "";
             let tipoTarjeta = cards[i].getAttribute("data-tipo") || "";
             let estadoVisto = cards[i].getAttribute("data-visto") || "no";
+            let generos = cards[i].getAttribute("data-generos") || "";
             
-            let coincideTexto = titulo.includes(inputBuscador) || director.includes(inputBuscador);
+            let coincideTexto = titulo.includes(inputBuscador) || director.includes(inputBuscador) || generos.includes(inputBuscador);
             let coincideTipo = true;
 
             if (filtroActual === 'all') {
@@ -825,8 +1245,10 @@ if ($puede_editar) {
             } else if (filtroActual === 'pendiente') {
                 coincideTipo = (tipoTarjeta === 'pelicula' && estadoVisto === 'no');
             }
+
+            let coincideGenero = (filtroGen === 'all' || generos.includes(filtroGen));
             
-            if (coincideTexto && coincideTipo) {
+            if (coincideTexto && coincideTipo && coincideGenero) {
                 cards[i].style.display = "flex";
                 visibles++;
             } else {
@@ -834,6 +1256,125 @@ if ($puede_editar) {
             }
         }
         document.getElementById("no-results-msg").style.display = (visibles === 0 && cards.length > 0) ? "block" : "none";
+    }
+
+    // --- RECOMENDADOR "🎲 ¿QUÉ VEO HOY?" ---
+    let ultimoRecomendadoId = null;
+
+    function abrirRecomendador() {
+        const modal = document.getElementById('modalRecomendador');
+        modal.style.display = 'flex';
+        obtenerRecomendacion();
+    }
+
+    function cerrarRecomendador(event) {
+        if (!event || event.target.id === 'modalRecomendador' || event.target.classList.contains('btn-close-modal') || event.target.classList.contains('btn-outline')) {
+            document.getElementById('modalRecomendador').style.display = 'none';
+        }
+    }
+
+    function animarYRecomendar() {
+        const icon = document.getElementById('spinIcon');
+        const spotlight = document.querySelector('.rec-spotlight');
+        if (icon) icon.classList.add('spinning');
+        if (spotlight) spotlight.classList.add('animating');
+
+        setTimeout(() => {
+            obtenerRecomendacion();
+            if (icon) icon.classList.remove('spinning');
+        }, 180);
+    }
+
+    function obtenerRecomendacion() {
+        const tipoFiltro = document.getElementById('recFiltroTipo').value;
+        const generoFiltro = document.getElementById('recFiltroGenero').value.toLowerCase();
+        const container = document.getElementById('recCardContainer');
+
+        // Filtrar candidatos: solo PENDIENTES
+        let candidatos = coleccionData.filter(item => {
+            // Solo pendientes (no vistas)
+            if (item.visto === 'Sí') return false;
+
+            // Filtro tipo
+            if (tipoFiltro !== 'all' && item.tipo !== tipoFiltro) return false;
+
+            // Filtro género
+            if (generoFiltro !== 'all') {
+                let itemGens = (item.generos || []).map(g => g.toLowerCase());
+                if (!itemGens.includes(generoFiltro)) return false;
+            }
+
+            return true;
+        });
+
+        if (candidatos.length === 0) {
+            container.innerHTML = `
+                <div class="rec-empty">
+                    <div class="rec-empty-icon">🎉</div>
+                    <h4 style="margin: 0 0 6px 0; color: var(--text-main); font-size: 17px;">¡Al día con esta categoría!</h4>
+                    <p style="margin: 0; font-size: 13px;">No hay títulos pendientes que coincidan con estos filtros.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Evitar repetir la misma si hay más de 1 candidata
+        let pool = candidatos;
+        if (candidatos.length > 1 && ultimoRecomendadoId !== null) {
+            pool = candidatos.filter(c => c.id !== ultimoRecomendadoId);
+            if (pool.length === 0) pool = candidatos;
+        }
+
+        const elegido = pool[Math.floor(Math.random() * pool.length)];
+        ultimoRecomendadoId = elegido.id;
+
+        const isSerie = (elegido.tipo === 'serie');
+        const badgeClass = isSerie ? 'badge-type-serie' : 'badge-type-pelicula';
+        const badgeText = isSerie ? '📺 Serie' : '🎬 Película';
+        const posterUrl = elegido.poster || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="125" height="185"><rect width="100%" height="100%" fill="%23e2e8f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="32">🎬</text></svg>';
+
+        let genresHtml = '';
+        if (elegido.generos && elegido.generos.length > 0) {
+            genresHtml = '<div class="card-genres" style="margin-bottom: 8px;">' + 
+                elegido.generos.map(g => `<span class="genre-chip">${escapeHtml(g)}</span>`).join('') + 
+            '</div>';
+        }
+
+        let linkHtml = '';
+        if (elegido.link) {
+            linkHtml = `<a href="${escapeHtml(elegido.link)}" target="_blank" class="btn-rec-action btn-rec-play">▶️ Ver / Descargar</a>`;
+        }
+
+        let actionSeenHtml = '';
+        if (!isSerie && <?php echo $puede_editar ? 'true' : 'false'; ?>) {
+            actionSeenHtml = `<a href="index.php?marcar_vista=${elegido.id}" class="btn-rec-action btn-rec-seen">👀 Marcar Vista</a>`;
+        }
+
+        container.innerHTML = `
+            <div class="rec-spotlight">
+                <img src="${posterUrl}" class="rec-poster" alt="${escapeHtml(elegido.titulo)}">
+                <div class="rec-info">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                            <h4 class="rec-title">${escapeHtml(elegido.titulo)}</h4>
+                            <span class="card-badge ${badgeClass}" style="flex-shrink: 0;">${badgeText}</span>
+                        </div>
+                        <div class="rec-meta">
+                            👤 ${escapeHtml(elegido.director) || 'Desconocido'} • 📅 ${elegido.anio || 'N/A'}
+                            ${isSerie ? ` • T${elegido.temporada} - Ep ${elegido.episodio}` : ''}
+                        </div>
+                        ${genresHtml}
+                        <div class="rec-sinopsis">
+                            ${escapeHtml(elegido.sinopsis) || 'Sin sinopsis disponible para este título.'}
+                        </div>
+                    </div>
+                    <div class="rec-actions">
+                        ${linkHtml}
+                        ${actionSeenHtml}
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     // --- AUTOCOMPLETADO INTELIGENTE CON TMDB ---
@@ -947,12 +1488,14 @@ if ($puede_editar) {
                     }
                 }
 
-                // Póster y Sinopsis
+                // Póster, Sinopsis y Géneros
                 const inputPoster = document.getElementById('inputPoster');
                 const inputSinopsis = document.getElementById('inputSinopsis');
+                const inputGeneros = document.getElementById('inputGeneros');
                 const previewContainer = document.getElementById('posterPreviewContainer');
                 const previewImg = document.getElementById('posterPreviewImg');
                 const previewSinopsis = document.getElementById('sinopsisPreviewText');
+                const previewGeneros = document.getElementById('previewGeneros');
 
                 if (details.poster) {
                     inputPoster.value = details.poster;
@@ -970,6 +1513,16 @@ if ($puede_editar) {
                     inputSinopsis.value = '';
                     if (previewSinopsis) previewSinopsis.textContent = '';
                 }
+
+                if (details.generos && details.generos.length > 0) {
+                    inputGeneros.value = JSON.stringify(details.generos);
+                    if (previewGeneros) {
+                        previewGeneros.innerHTML = details.generos.map(g => `<span class="genre-chip">${escapeHtml(g)}</span>`).join('');
+                    }
+                } else {
+                    inputGeneros.value = '[]';
+                    if (previewGeneros) previewGeneros.innerHTML = '';
+                }
             })
             .catch(err => {
                 if (acSpinner) acSpinner.style.display = 'none';
@@ -980,6 +1533,7 @@ if ($puede_editar) {
     function quitarPoster() {
         document.getElementById('inputPoster').value = '';
         document.getElementById('inputSinopsis').value = '';
+        document.getElementById('inputGeneros').value = '[]';
         document.getElementById('posterPreviewContainer').style.display = 'none';
     }
 
